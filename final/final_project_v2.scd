@@ -88,7 +88,7 @@ SynthDef.new(\distort, {
 }).add;
 
 SynthDef.new(\digital, {
-    arg in = 0, amp = 0.8, bitPower = 7, lpfCutoff = 2000, hpfCutoff = 500, out = 0;
+    arg in = 0, amp = 0.8, bitPower = 7, lpfCutoff = 2000, hpfCutoff = 20, out = 0;
     var sig;
     sig = In.ar(in, 2);
 	// process signal
@@ -156,7 +156,7 @@ s.newBusAllocators;
 ], ~fxGroup).register;
 
 ~playbufFx = Synth(\playbuf, [
-	buf: ~drumBuffer,
+	buf: ~guitarBuffer,  // choose sample here
 	wowRate: 0.1,
 	wowMagnitude: 1.00,
 	flutterRate: 0.5,
@@ -176,7 +176,7 @@ s.newBusAllocators;
 // Setup UI
 (
 Window.closeAll;
-w = Window.new("MUS 499C Final Project", Rect.new(600, 200, 800, 600))
+w = Window.new("MUS 499C 'NH-20 Nostalgic Hue'", Rect.new(600, 200, 800, 600))
 .front
 .alwaysOnTop_(true);
 
@@ -388,7 +388,7 @@ w.view.decorator.left_(400);
 });
 
 // Digital HPF cutoff slider
-~digitalHpfCutoffSpec = ControlSpec(20, 20000, \exp, units: "Hz", default: 100);
+~digitalHpfCutoffSpec = ControlSpec(20, 20000, \exp, units: "Hz", default: 20);
 ~digitalHpfCutoffSlider = EZSlider.new(w, ~sliderBounds, "Digital HPF cutoff", ~digitalHpfCutoffSpec, unitWidth:30, numberWidth:60, layout: \vert)
 .action_({
     |view|
@@ -407,4 +407,15 @@ w.view.decorator.left_(400);
     })
 });
 
-)
+// ========== Reverb ================
+// Digital output gain
+~reverbMixSpec = ControlSpec(0, 1.0, \lin, units: "mix", default: 0.0);
+~reverbMixSlider = EZSlider.new(w, ~sliderBounds, "Reverb", ~reverbMixSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~reverbFx.isPlaying, {
+        ~reverbFx.set(\mix, view.value);
+    })
+});
+
+) // EOF
