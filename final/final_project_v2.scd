@@ -2,14 +2,15 @@ s.boot;
 
 (
 // Load buffer
-~sampleFileName = "piano.wav";
-~sampleLoopBuffer = Buffer.read(s, ~sampleFileName.resolveRelative);
+~pianoBuffer = Buffer.read(s, "piano.wav".resolveRelative);
+~guitarBuffer = Buffer.read(s, "guitar.wav".resolveRelative);
+~drumBuffer = Buffer.read(s, "drum_loop.wav".resolveRelative);
 )
 
 (
 // Load SynthDefs
 SynthDef.new(\playbuf, {
-	arg buf = 0, wobbleControl = 1, wowRate = 1, wowMagnitude = 1, flutterRate = 1, flutterMagnitude = 0, amp = 0.3, gate = 1, out = 0;
+	arg buf = 0, wobbleControl = 0, wowRate = 0, wowMagnitude = 1, flutterRate = 1, flutterMagnitude = 0, amp = 0.3, gate = 1, out = 0;
     var env, sig, wow, flutter, wobble;
     env = EnvGen.kr(Env.asr(0,1,2,-1), gate, doneAction:2);
 
@@ -64,30 +65,36 @@ SynthDef.new(\noise, {
     var sig, noise;
 	noise = HPF.ar(BrownNoise.ar(noiseVolume), noiseHpfCutoff);  // apply noise
 	noise = noise + Dust2.ar(dustDensity ! 2, dustVolume ! 2);  // apply "crackle"
-	noise = noise + LPF.ar(noise, lpfCutoff);
+	noise = LPF.ar(noise, lpfCutoff);
     sig = In.ar(in, 2);
     sig = sig + (outGain * noise);
     Out.ar(out, sig);
 }).add;
 
 SynthDef.new(\distort, {
-    arg in = 0, amount = 0.1, amp = 0.8, out = 0;
+    arg in = 0, inAmp = 1.0, amount = 0.1, outAmp = 0.8, out = 0;
     var sig, k;
     sig = In.ar(in, 2);
+    sig = sig * inAmp;
+
+	// process signal using dist. algorithm
+    // Source: https://gist.github.com/jpburstrom/9cd623202f535070925a
+    // Desmos visualization: https://www.desmos.com/calculator/kgyo2v0oy9
 	k = 2 * amount / (1 - amount);
 	sig = (1 + k) * sig / (1 + (k * sig.abs));  // apply distortion
-	sig = sig * amp;
-	// process signal
+	sig = sig * outAmp;
+    sig = Limiter.ar(sig, 0.9);
     Out.ar(out, sig);
 }).add;
 
 SynthDef.new(\digital, {
-    arg in = 0, amp = 0.8, bitPower = 7, lpfCutoff = 2000, out = 0;
+    arg in = 0, amp = 0.8, bitPower = 7, lpfCutoff = 2000, hpfCutoff = 500, out = 0;
     var sig;
     sig = In.ar(in, 2);
 	// process signal
 	sig = sig.round(2**(-1 * bitPower));  // bitcrush
 	sig = LPF.ar(sig, lpfCutoff, amp);  // lpf and amplitude
+    sig = HPF.ar(sig, hpfCutoff);
     Out.ar(out, sig);
 }).add;
 )
@@ -107,15 +114,6 @@ s.newBusAllocators;
 ~digitalBus = Bus.audio(s, 2);
 )
 
-(
-// Play with no effects
-Synth(\playbuf, [
-	buf: ~sampleLoopBuffer,
-	amp: 0.4,
-	out: 0
-], ~sourceGroup);
-)
-
 
 (
 // Setup signal flow
@@ -127,7 +125,7 @@ Synth(\playbuf, [
 
 ~digitalFx = Synth(\digital, [
 	in: ~digitalBus,
-	bitPower: 10,
+	bitPower: 16,
 	lpfCutoff: 16000,
 	amp: 1.0,
 	out: ~reverbBus,
@@ -135,14 +133,15 @@ Synth(\playbuf, [
 
 ~distortFx = Synth(\distort, [
 	in: ~distortBus,
-	amount: 0.8,  // (-1, 1) but closer to 1 is better
-	amp: 0.8,
+    inAmp: 1.0,
+	amount: 0.0,  // (-1, 1) but closer to 1 is better
+	outAmp: 0.8,
 	out: ~digitalBus,
 ], ~fxGroup).register;
 
 ~vinylFx = Synth(\vinylNoise, [
 	in: ~vinylNoiseBus,
-	noiseAmp: 0.5,
+	noiseAmp: 0.0,
 	out: ~distortBus
 ], ~fxGroup).register;
 
@@ -150,20 +149,20 @@ Synth(\playbuf, [
 	in: ~noiseBus,
 	noiseVolume: 0.0,  // [0, 1]. make it < 0.1
 	dustVolume: 0.0,
-	dustDensity: 5,
+	dustDensity: 0,
     lpfCutoff: 6000,
     outGain: 0.0,
-	out: ~vinylNoise
+	out: ~vinylNoiseBus
 ], ~fxGroup).register;
 
 ~playbufFx = Synth(\playbuf, [
-	buf: ~sampleLoopBuffer,
+	buf: ~drumBuffer,
 	wowRate: 0.1,
-	wowMagnitude: 1.01,
+	wowMagnitude: 1.00,
 	flutterRate: 0.5,
 	flutterMagnitude: 0.01,
-    wowControl: 0.0,
-	out: ~digitalBus
+    wobbleControl: 0.0,
+	out: ~noiseBus
 ], ~sourceGroup).register;
 )
 
@@ -177,7 +176,7 @@ Synth(\playbuf, [
 // Setup UI
 (
 Window.closeAll;
-w = Window.new("MUS 499C Final Project", Rect.new(100, 100, 800, 500))
+w = Window.new("MUS 499C Final Project", Rect.new(600, 200, 800, 600))
 .front
 .alwaysOnTop_(true);
 
@@ -186,10 +185,13 @@ w.onClose = {
 };
 
 w.addFlowLayout(10@50, 5@5);
+~sliderBounds = 50@250;
+
+// ========== Wobble ================
 
 // 'Wow' magnitude controls
-~wowMagnitudeControlSpec = ControlSpec(1.0, 1.5, \exp, units: "ratio");
-~wowMagnitudeSlider = EZSlider.new(w, 60@250, "Wow magnitude", ~wowMagnitudeControlSpec, unitWidth:30, numberWidth:60, layout: \vert)
+~wowMagnitudeControlSpec = ControlSpec(1.0, 1.2, \exp, units: "ratio");
+~wowMagnitudeSlider = EZSlider.new(w, ~sliderBounds, "Wow magnitude", ~wowMagnitudeControlSpec, unitWidth:30, numberWidth:60, layout: \vert)
 .action_({
     |view|
     if (~playbufFx.isPlaying, {
@@ -199,7 +201,7 @@ w.addFlowLayout(10@50, 5@5);
 
 // 'Wow' rate controls
 ~wowRateControlSpec = ControlSpec(0.01, 2, \exp, units: "Hz");
-~wowRateSlider = EZSlider.new(w, 60@250, "Wow rate", ~wowRateControlSpec, unitWidth:30, numberWidth:60, layout: \vert)
+~wowRateSlider = EZSlider.new(w, ~sliderBounds, "Wow rate", ~wowRateControlSpec, unitWidth:30, numberWidth:60, layout: \vert)
 .action_({
     |view|
     if (~playbufFx.isPlaying, {
@@ -210,7 +212,7 @@ w.addFlowLayout(10@50, 5@5);
 
 // 'Flutter' magnitude controls
 ~flutterMagnitudeControlSpec = ControlSpec(0.001, 0.2, \exp, units: "deviation");
-~flutterMagnitudeSlider = EZSlider.new(w, 60@250, "Flutter magnitude", ~flutterMagnitudeControlSpec, unitWidth:30, numberWidth:60, layout: \vert)
+~flutterMagnitudeSlider = EZSlider.new(w, ~sliderBounds, "Flutter magnitude", ~flutterMagnitudeControlSpec, unitWidth:30, numberWidth:60, layout: \vert)
 .action_({
     |view|
     if (~playbufFx.isPlaying, {
@@ -220,13 +222,14 @@ w.addFlowLayout(10@50, 5@5);
 
 // 'Flutter' rate controls
 ~flutterRateControlSpec = ControlSpec(1, 10, \exp, units: "Hz");
-~flutterRateSlider = EZSlider.new(w, 60@250, "Flutter rate", ~flutterRateControlSpec, unitWidth:30, numberWidth:60, layout: \vert)
+~flutterRateSlider = EZSlider.new(w, ~sliderBounds, "Flutter rate", ~flutterRateControlSpec, unitWidth:30, numberWidth:60, layout: \vert)
 .action_({
     |view|
     if (~playbufFx.isPlaying, {
         ~playbufFx.set(\flutterRate, view.value);
     })
 });
+
 
 // Wobble toggle button
 ~wobbleButton = Button.new(w, Rect(60, 20, 100, 30))
@@ -241,14 +244,17 @@ w.addFlowLayout(10@50, 5@5);
             ~playbufFx.set(\wobbleControl, 0);
         }, {
             ~playbufFx.set(\wobbleControl, 1);
-
         })
     })
 });
 
+// ========== Noise ================
+w.view.decorator.left_(400);
+
+
 // Noise gain slider
 ~noiseGainSpec = ControlSpec(0.001, 0.3, \exp, units: "gain");
-~noiseGainSlider = EZSlider.new(w, 60@250, "Noise gain", ~noiseGainSpec, unitWidth:30, numberWidth:60, layout: \vert)
+~noiseGainSlider = EZSlider.new(w, ~sliderBounds, "Noise gain", ~noiseGainSpec, unitWidth:30, numberWidth:60, layout: \vert)
 .action_({
     |view|
     if (~noiseFx.isPlaying, {
@@ -258,7 +264,7 @@ w.addFlowLayout(10@50, 5@5);
 
 // Dust gain slider
 ~dustGainSpec = ControlSpec(0.001, 0.3, \exp, units: "gain");
-~dustGainSlider = EZSlider.new(w, 60@250, "Dust gain", ~dustGainSpec, unitWidth:30, numberWidth:60, layout: \vert)
+~dustGainSlider = EZSlider.new(w, ~sliderBounds, "Dust gain", ~dustGainSpec, unitWidth:30, numberWidth:60, layout: \vert)
 .action_({
     |view|
     if (~noiseFx.isPlaying, {
@@ -268,11 +274,31 @@ w.addFlowLayout(10@50, 5@5);
 
 // Dust density slider
 ~dustDensitySpec = ControlSpec(0.001, 50, \lin, units: "density (Hz)");
-~dustDensitySlider = EZSlider.new(w, 60@250, "Dust density", ~dustDensitySpec, unitWidth:30, numberWidth:60, layout: \vert)
+~dustDensitySlider = EZSlider.new(w, ~sliderBounds, "Dust density", ~dustDensitySpec, unitWidth:30, numberWidth:60, layout: \vert)
 .action_({
     |view|
     if (~noiseFx.isPlaying, {
         ~noiseFx.set(\dustDensity, view.value);
+    })
+});
+
+// LPF cutoff slider
+~noiseLpfCutoffSpec = ControlSpec(20, 20000, \exp, units: "Hz", default: 6000);
+~noiseLpfCutoffSlider = EZSlider.new(w, ~sliderBounds, "LPF cutoff", ~noiseLpfCutoffSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~noiseFx.isPlaying, {
+        ~noiseFx.set(\lpfCutoff, view.value);
+    })
+});
+
+// HPF cutoff slider
+~noiseHpfCutoffSpec = ControlSpec(20, 20000, \exp, units: "Hz", default: 500);
+~noiseHpfCutoffSlider = EZSlider.new(w, ~sliderBounds, "HPF cutoff", ~noiseHpfCutoffSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~noiseFx.isPlaying, {
+        ~noiseFx.set(\noiseHpfCutoff, view.value);
     })
 });
 
@@ -293,5 +319,92 @@ w.addFlowLayout(10@50, 5@5);
     })
 });
 
-s.meter;
+
+// ========== Vinyl ================
+
+// Vinyl gain
+~vinylGainSpec = ControlSpec(0.001, 10.0, \lin, units: "gain");
+~vinylGainSlider = EZSlider.new(w, ~sliderBounds, "Vinyl gain", ~vinylGainSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~vinylFx.isPlaying, {
+        ~vinylFx.set(\noiseAmp, view.value);
+    })
+});
+
+// ========== Distortion ================
+
+// Distortion amount
+~distortAmountSpec = ControlSpec(0, 0.999, \lin, units: "amount", default: 0.0);
+~distortAmountSlider = EZSlider.new(w, ~sliderBounds, "Distortion", ~distortAmountSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~distortFx.isPlaying, {
+        ~distortFx.set(\amount, view.value);
+    })
+});
+
+// Distortion input gain
+~distortInputGainSpec = ControlSpec(0.001, 2.0, \lin, units: "gain", default: 1.0);
+~distortInputGainSlider = EZSlider.new(w, ~sliderBounds, "Dist. in gain", ~distortInputGainSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~distortFx.isPlaying, {
+        ~distortFx.set(\inAmp, view.value);
+    })
+});
+
+// Distortion output gain
+~distortOutputGainSpec = ControlSpec(0.001, 2.0, \lin, units: "gain", default: 1.0);
+~distortOutputGainSlider = EZSlider.new(w, ~sliderBounds, "Dist. out gain", ~distortOutputGainSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~distortFx.isPlaying, {
+        ~distortFx.set(\outAmp, view.value);
+    })
+});
+
+// ========== Digital ================
+w.view.decorator.left_(400);
+
+// Digital bit power slider
+~digitalBitSpec = ControlSpec(2, 16, \exp, units: "bit rounding", default: 16);
+~digitalBitSpecSlider = EZSlider.new(w, ~sliderBounds, "Digital (bitcrush)", ~digitalBitSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~digitalFx.isPlaying, {
+        ~digitalFx.set(\bitPower, view.value);
+    })
+});
+
+// Digital LPF cutoff slider
+~digitalLpfCutoffSpec = ControlSpec(20, 20000, \exp, units: "Hz", default: 16000);
+~digitalLpfCutoffSlider = EZSlider.new(w, ~sliderBounds, "Digital LPF cutoff", ~digitalLpfCutoffSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~digitalFx.isPlaying, {
+        ~digitalFx.set(\lpfCutoff, view.value);
+    })
+});
+
+// Digital HPF cutoff slider
+~digitalHpfCutoffSpec = ControlSpec(20, 20000, \exp, units: "Hz", default: 100);
+~digitalHpfCutoffSlider = EZSlider.new(w, ~sliderBounds, "Digital HPF cutoff", ~digitalHpfCutoffSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~digitalFx.isPlaying, {
+        ~digitalFx.set(\hpfCutoff, view.value);
+    })
+});
+
+// Digital output gain
+~digitalOutputGainSpec = ControlSpec(0.001, 2.0, \lin, units: "gain", default: 1.0);
+~digitalOutputGainSlider = EZSlider.new(w, ~sliderBounds, "Digital out gain", ~digitalOutputGainSpec, unitWidth:30, numberWidth:60, layout: \vert)
+.action_({
+    |view|
+    if (~digitalFx.isPlaying, {
+        ~digitalFx.set(\amp, view.value);
+    })
+});
+
 )
