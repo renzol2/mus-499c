@@ -2,15 +2,17 @@ s.boot;
 
 (
 // Load buffer
+// NOTE: declare new buffers here to read in
 ~pianoBuffer = Buffer.read(s, "piano.wav".resolveRelative);
 ~guitarBuffer = Buffer.read(s, "guitar.wav".resolveRelative);
 ~drumBuffer = Buffer.read(s, "drum_loop.wav".resolveRelative);
+~synthBuffer = Buffer.read(s, "synth.wav".resolveRelative);
 )
 
 (
 // Load SynthDefs
 SynthDef.new(\playbuf, {
-	arg buf = 0, wobbleControl = 0, wowRate = 0, wowMagnitude = 1, flutterRate = 1, flutterMagnitude = 0, amp = 0.3, gate = 1, out = 0;
+	arg buf = nil, wobbleControl = 0, wowRate = 0, wowMagnitude = 1, flutterRate = 1, flutterMagnitude = 0, amp = 0.3, gate = 1, out = 0;
     var env, sig, wow, flutter, wobble;
     env = EnvGen.kr(Env.asr(0,1,2,-1), gate, doneAction:2);
 
@@ -116,7 +118,7 @@ s.newBusAllocators;
 
 
 (
-// Setup signal flow
+// Setup signal flow and play sound
 ~reverbFx = Synth(\reverb, [
 	in: ~reverbBus,
 	mix: 0,
@@ -156,7 +158,7 @@ s.newBusAllocators;
 ], ~fxGroup).register;
 
 ~playbufFx = Synth(\playbuf, [
-	buf: ~guitarBuffer,  // choose sample here
+	buf: ~pianoBuffer,  // choose sample here
 	wowRate: 0.1,
 	wowMagnitude: 1.00,
 	flutterRate: 0.5,
@@ -168,13 +170,15 @@ s.newBusAllocators;
 
 (
 // Cleanup
+// NOTE: running this block clears all groups and stops the sound.
+// You can run the block above this to start the sound again.
 ~sourceGroup.freeAll;
 ~fxGroup.freeAll;
 )
 
 
-// Setup UI
 (
+// Setup UI
 Window.closeAll;
 w = Window.new("MUS 499C 'NH-20 Nostalgic Hue'", Rect.new(600, 200, 800, 600))
 .front
@@ -234,13 +238,13 @@ w.addFlowLayout(10@50, 5@5);
 // Wobble toggle button
 ~wobbleButton = Button.new(w, Rect(60, 20, 100, 30))
 .states_([
-    ["enable wobble", Color.black, Color.white],
-    ["disable wobble", Color.black, Color.new255(183, 216, 252)]
+    ["disable wobble", Color.black, Color.new255(183, 216, 252)],
+    ["enable wobble", Color.black, Color.white]
 ])
 .action_({
     |view|
     if (~playbufFx.isPlaying, {
-        if (view.value == 1, {
+        if (view.value == 0, {
             ~playbufFx.set(\wobbleControl, 0);
         }, {
             ~playbufFx.set(\wobbleControl, 1);
@@ -417,5 +421,29 @@ w.view.decorator.left_(400);
         ~reverbFx.set(\mix, view.value);
     })
 });
+
+
+// ========== Sample selection ================
+
+// NOTE: add a new item for each new sample
+~bufferMenu = PopUpMenu(w, Rect(10, 10, 130, 30))
+.items_(["Piano", "Guitar", "Drums", "Synth"]);
+
+// NOTE: add a new function for each new sample, providing appropriate buffer
+~bufferMenuFuncs = [
+    { ~playbufFx.set(\buf, ~pianoBuffer) },
+    { ~playbufFx.set(\buf, ~guitarBuffer) },
+    { ~playbufFx.set(\buf, ~drumBuffer) },
+    { ~playbufFx.set(\buf, ~synthBuffer) },
+];
+
+~bufferMenuButton = Button(w, Rect(110, 10, 180, 30))
+  .states_([["switch sample", Color.black, Color.new255(183, 252, 216)]])
+  .mouseDownAction_({
+    // I'm not sure what the best way to run these functions is,
+    // but this seems to work without throwing an error!
+    ~bufferMenuFuncs.at(~bufferMenu.value).value;
+   });
+
 
 ) // EOF
