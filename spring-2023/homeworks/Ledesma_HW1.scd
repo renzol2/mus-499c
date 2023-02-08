@@ -9,7 +9,42 @@
 // As a reference, here is an array of directions representing a horizontal (2D) quadraphonic loudspeaker array in a square room, all positioned on the equatorial plane (level with your head):
 
 // front-left, back-left, back-right, front-right
-~directions = [[45, 0], [135, 0], [-135, 0], [-45, 0]];
+~quadraphonicDirections = [[45, 0], [135, 0], [-135, 0], [-45, 0]].degrad;
+
+([0, 1, 2, 3, 4]
+  .collect({|x| ((x * 72)) % 360 })
+  .collect({|x| if (x <= 180, { x }, { -1 * (x - 180) })})
+  .degrad)
+
+~directions = [
+	// 1 - 5
+	[36, ??],
+	[108, ??],
+	[180, ??],
+	[-108, ??],
+	[-36, ??],
+
+	// 6 - 10
+	[36, ??],
+	[108, ??],
+	[180, ??],
+	[-108, ??],
+	[-36, ??],
+
+	// 11 - 15
+	[0, ??],
+	[72, ??],
+	[144, ??],
+	[-108, ??],
+	[-36, ??],
+
+	// 16 - 20
+	[0, ??],
+	[72, ??],
+	[144, ??],
+	[-108, ??],
+	[-36, ??],
+];
 
 
 
