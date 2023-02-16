@@ -184,25 +184,26 @@ AtkHoa.formatDict;
 AtkHoa.formatDict;
 (
 ~newEncoder = HoaMatrixEncoder.newFormat(
-	format: \ambix,
+	format: [\acn, \n3d],
 	order: 3
 );
 )
 
 (
 SynthDef.new(\playInDodecahedron, {
+	| bufnum = 0, azimuth = 0, elevation = 0 |
 	var sig, directionEncoder;
 
 	sig = PlayBuf.ar(
 		numChannels: 1,
-		bufnum: \bufnum.kr(0),
+		bufnum: bufnum,
 		doneAction: 2
 	);
 
 	sig = HoaEncodeDirection.ar(
 		in: sig,
-		theta: \azimuth.kr(0),
-		phi: \elevation.kr(0),
+		theta: azimuth,
+		phi: elevation,
 		radius: AtkHoa.refRadius,
 		order: 3,
 	);
@@ -257,10 +258,6 @@ Pbind(
 		-45
 	].degrad),
 ).play;
-)
-
-(
-Pbind(\freq, Prand([300, 500, 231.2, 399.2], inf), \dur, 0.1).play;
 )
 
 
