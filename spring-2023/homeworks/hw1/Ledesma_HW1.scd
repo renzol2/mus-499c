@@ -1,4 +1,15 @@
-s.options.numWireBufs = 2 ** 10;
+(
+ServerOptions.devices; // all devices
+ServerOptions.inDevices; // input devices
+ServerOptions.outDevices; // output devices
+
+s.options.numOutputBusChannels = 24;
+s.options.numWireBufs = 256;
+s.options.outDevice = 'Audio Out';
+s.options.sampleRate = 44100;
+
+s.boot;
+)
 
 // HW1
 
@@ -92,9 +103,6 @@ AtkHoa.formatDict;
 // Problem 4.
 // Create and play a UGen function that generates an audio signal from reading the B-format file (PlayBuf), encodes the B-format signal to ACN/N3D format using your encoder from the previous problem (HoaEncodeMatrix), and decodes this signal for the dodecahedron array using your decoder from Problem 2 (HoaDecodeMatrix).
 
-s.boot;
-s.options.sampleRate = 44100;
-
 (
 {
 	var sig;
@@ -143,14 +151,28 @@ s.options.sampleRate = 44100;
 
 (
 // Load buffers
-~upFrontLeftBuf = Buffer.read(s,"up_front_left.wav".resolveRelative);
-~upFrontRightBuf = Buffer.read(s,"up_front_right.wav".resolveRelative);
-~upBackLeftBuf = Buffer.read(s,"up_back_left.wav".resolveRelative);
-~upBackRightBuf = Buffer.read(s,"up_back_right.wav".resolveRelative);
-~downFrontLeftBuf = Buffer.read(s,"down_front_left.wav".resolveRelative);
-~downFrontRightBuf = Buffer.read(s,"down_front_right.wav".resolveRelative);
-~downBackLeftBuf = Buffer.read(s,"down_back_left.wav".resolveRelative);
-~downBackRightBuf = Buffer.read(s,"down_back_right.wav".resolveRelative);
+~upFrontLeftBuf = Buffer.read(s,"directions/up_front_left.wav".resolveRelative);
+~upFrontRightBuf = Buffer.read(s,"directions/up_front_right.wav".resolveRelative);
+~upBackLeftBuf = Buffer.read(s,"directions/up_back_left.wav".resolveRelative);
+~upBackRightBuf = Buffer.read(s,"directions/up_back_right.wav".resolveRelative);
+~downFrontLeftBuf = Buffer.read(s,"directions/down_front_left.wav".resolveRelative);
+~downFrontRightBuf = Buffer.read(s,"directions/down_front_right.wav".resolveRelative);
+~downBackLeftBuf = Buffer.read(s,"directions/down_back_left.wav".resolveRelative);
+~downBackRightBuf = Buffer.read(s,"directions/down_back_right.wav".resolveRelative);
+)
+
+// Testing the sounds work
+(
+{
+	var sig;
+	sig = PlayBuf.ar(
+		numChannels: 4,
+		bufnum: ~downBackRightBuf,
+		doneAction: 2
+	);
+	sig = HoaEncodeMatrix.ar(sig, ~encoder);
+	sig = HoaDecodeMatrix.ar(sig, ~decoder);
+}.play;
 )
 
 
@@ -159,12 +181,15 @@ s.options.sampleRate = 44100;
 // Problem 7.
 // Create and add a SynthDef that generates a monophonic signal by playing one of these buffers (PlayBuf), encodes that monophonic signal as a directional 3rd order ambisonic signal (HoaEncodeDirection), and then decodes this signal for the dodecahedron array using the decoder from Problem 5. Your SynthDef must include arguments for bufnum, azimuth angle, and elevation angle.
 
+AtkHoa.formatDict;
 (
 ~newEncoder = HoaMatrixEncoder.newFormat(
-	format: \fuma,
+	format: \ambix,
 	order: 3
 );
+)
 
+(
 SynthDef.new(\playInDodecahedron, {
 	var sig, directionEncoder;
 
@@ -176,8 +201,8 @@ SynthDef.new(\playInDodecahedron, {
 
 	sig = HoaEncodeDirection.ar(
 		in: sig,
-		theta: \theta.ir(0),
-		phi: \phi.ir(0),
+		theta: \azimuth.kr(0),
+		phi: \elevation.kr(0),
 		radius: AtkHoa.refRadius,
 		order: 3,
 	);
@@ -195,19 +220,47 @@ SynthDef.new(\playInDodecahedron, {
 // Create and play a Pbind that plays each of your eight buffers, one-by-one, and spatializes each one along the appropriate vector in 3D space, based on the spoken text. For example, "up front left" should appear to emanate 45 degrees left of front, and 45 degrees above the equatorial plane.
 
 (
+~directionBufs = [
+	~upFrontLeftBuf,
+	~upFrontRightBuf,
+	~upBackLeftBuf,
+	~upBackRightBuf,
+	~downFrontLeftBuf,
+	~downFrontRightBuf,
+	~downBackLeftBuf,
+	~downBackRightBuf,
+];
+
 Pbind(
 	\instrument, \playInDodecahedron,
-	\bufnum, Pseq([
-		~upFrontLeftBuf,
-		~upFrontRightBuf,
-		~upBackLeftBuf,
-		~upBackRightBuf,
-		~downFrontLeftBuf,
-		~downFrontRightBuf,
-		~downBackLeftBuf,
-		~downBackRightBuf,
-	]),
+	\bufnum, Pseq(~directionBufs),
+
+	\theta, Pseq([
+		45,
+		-45,
+		135,
+		-135,
+		45,
+		-45,
+		135,
+		-135,
+	].degrad),
+
+	\phi, Pseq([
+		45,
+		45,
+		45,
+		45,
+		-45,
+		-45,
+		-45,
+		-45
+	].degrad),
 ).play;
+)
+
+(
+Pbind(\freq, Prand([300, 500, 231.2, 399.2], inf), \dur, 0.1).play;
 )
 
 
