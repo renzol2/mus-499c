@@ -39,7 +39,7 @@ SynthDef.new(\dir, {
 	var sig;
 	sig = PinkNoise.ar(0.5);
 	// The below line does the same as the encoder above, but in "UGen-land"
-	// sig = HoaEncodeDirection.ar(sig, \theta.ir(0), \phi.ir(0), AtkHoa.refRadius, 3);
+	// /*sig = HoaEncodeDirection.ar(sig, \theta.ir(0), \phi.ir(0), AtkHoa.refRadius, 3);*/
 
 	sig = HoaEncodeMatrix.ar(sig, ~encoder);
 	// Use this for transforming stuff

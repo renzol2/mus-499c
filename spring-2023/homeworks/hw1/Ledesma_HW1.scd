@@ -1,3 +1,5 @@
+s.options.numWireBufs = 2 ** 10;
+
 // HW1
 
 // Save this scd file in a new folder, and name that folder "LastName_HW1". Write your answers in this scd file, and copy any necessary audio files into this folder as well. When finished, zip the folder and upload it to the course website.
@@ -10,11 +12,6 @@
 
 // front-left, back-left, back-right, front-right
 ~quadraphonicDirections = [[45, 0], [135, 0], [-135, 0], [-45, 0]].degrad;
-
-([0, 1, 2, 3, 4]
-  .collect({|x| ((x * 72)) % 360 })
-  .collect({|x| if (x <= 180, { x }, { -1 * (x - 180) })})
-  .degrad)
 
 (
 // FIXME: fix the elevation angles
@@ -91,14 +88,25 @@ AtkHoa.formatDict;
 
 
 
-
-
 // ----------
 // Problem 4.
 // Create and play a UGen function that generates an audio signal from reading the B-format file (PlayBuf), encodes the B-format signal to ACN/N3D format using your encoder from the previous problem (HoaEncodeMatrix), and decodes this signal for the dodecahedron array using your decoder from Problem 2 (HoaDecodeMatrix).
 
+s.boot;
+s.options.sampleRate = 44100;
 
-
+(
+{
+	var sig;
+	sig = PlayBuf.ar(
+		numChannels: 4,
+		bufnum: ~leonardOrfeoTrioBFormatBuf,
+		doneAction: 2
+	);
+	sig = HoaEncodeMatrix.ar(sig, ~encoder);
+	sig = HoaDecodeMatrix.ar(sig, ~decoder);
+}.play;
+)
 
 
 
@@ -107,7 +115,12 @@ AtkHoa.formatDict;
 // Create a 3rd-order decoder for the Studio Z dodecahedron array. This should be nearly identical to your decoder from Problem 2.
 
 
-
+(
+~thirdOrderDecoder = HoaMatrixDecoder.newModeMatch(
+	directions: ~directions,
+	order: 3,
+);
+)
 
 
 
@@ -128,9 +141,17 @@ AtkHoa.formatDict;
 
 // Quality isn't the focus here — feel free to record using your phone, or your computer's built-in microphone — whatever is easiest/fastest for you. Cut and export your recordings (e.g. using Audacity) so that you have eight separate wav/aiff files. Then, load these recordings into eight one-channel Buffers in SC. Again, write your code so that when I run it, it'll work without me having to change or rewrite anything.
 
-
-
-
+(
+// Load buffers
+~upFrontLeftBuf = Buffer.read(s,"up_front_left.wav".resolveRelative);
+~upFrontRightBuf = Buffer.read(s,"up_front_right.wav".resolveRelative);
+~upBackLeftBuf = Buffer.read(s,"up_back_left.wav".resolveRelative);
+~upBackRightBuf = Buffer.read(s,"up_back_right.wav".resolveRelative);
+~downFrontLeftBuf = Buffer.read(s,"down_front_left.wav".resolveRelative);
+~downFrontRightBuf = Buffer.read(s,"down_front_right.wav".resolveRelative);
+~downBackLeftBuf = Buffer.read(s,"down_back_left.wav".resolveRelative);
+~downBackRightBuf = Buffer.read(s,"down_back_right.wav".resolveRelative);
+)
 
 
 
@@ -138,7 +159,33 @@ AtkHoa.formatDict;
 // Problem 7.
 // Create and add a SynthDef that generates a monophonic signal by playing one of these buffers (PlayBuf), encodes that monophonic signal as a directional 3rd order ambisonic signal (HoaEncodeDirection), and then decodes this signal for the dodecahedron array using the decoder from Problem 5. Your SynthDef must include arguments for bufnum, azimuth angle, and elevation angle.
 
+(
+~newEncoder = HoaMatrixEncoder.newFormat(
+	format: \fuma,
+	order: 3
+);
 
+SynthDef.new(\playInDodecahedron, {
+	var sig, directionEncoder;
+
+	sig = PlayBuf.ar(
+		numChannels: 1,
+		bufnum: \bufnum.kr(0),
+		doneAction: 2
+	);
+
+	sig = HoaEncodeDirection.ar(
+		in: sig,
+		theta: \theta.ir(0),
+		phi: \phi.ir(0),
+		radius: AtkHoa.refRadius,
+		order: 3,
+	);
+
+	sig = HoaEncodeMatrix.ar(sig, ~newEncoder);
+	sig = HoaDecodeMatrix.ar(sig, ~thirdOrderDecoder);
+}).add;
+)
 
 
 
@@ -147,7 +194,21 @@ AtkHoa.formatDict;
 // Problem 8.
 // Create and play a Pbind that plays each of your eight buffers, one-by-one, and spatializes each one along the appropriate vector in 3D space, based on the spoken text. For example, "up front left" should appear to emanate 45 degrees left of front, and 45 degrees above the equatorial plane.
 
-
+(
+Pbind(
+	\instrument, \playInDodecahedron,
+	\bufnum, Pseq([
+		~upFrontLeftBuf,
+		~upFrontRightBuf,
+		~upBackLeftBuf,
+		~upBackRightBuf,
+		~downFrontLeftBuf,
+		~downFrontRightBuf,
+		~downBackLeftBuf,
+		~downBackRightBuf,
+	]),
+).play;
+)
 
 
 
