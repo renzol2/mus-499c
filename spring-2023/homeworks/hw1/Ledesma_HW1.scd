@@ -4,7 +4,7 @@ ServerOptions.inDevices; // input devices
 ServerOptions.outDevices; // output devices
 
 s.options.numOutputBusChannels = 24;
-s.options.numWireBufs = 256;
+s.options.numWireBufs = 1024;
 s.options.outDevice = 'Audio Out';
 s.options.sampleRate = 44100;
 
@@ -184,14 +184,15 @@ AtkHoa.formatDict;
 AtkHoa.formatDict;
 (
 ~newEncoder = HoaMatrixEncoder.newFormat(
-	format: [\acn, \n3d],
+	format: \fuma,
 	order: 3
 );
 )
 
+s.options.numWireBufs = 128;
 (
 SynthDef.new(\playInDodecahedron, {
-	| bufnum = 0, azimuth = 0, elevation = 0 |
+	| bufnum = 0, azimuth = 0, elevation = 0, amp = 0.3 |
 	var sig, directionEncoder;
 
 	sig = PlayBuf.ar(
@@ -199,6 +200,8 @@ SynthDef.new(\playInDodecahedron, {
 		bufnum: bufnum,
 		doneAction: 2
 	);
+
+	sig = sig * amp;
 
 	sig = HoaEncodeDirection.ar(
 		in: sig,
@@ -210,6 +213,7 @@ SynthDef.new(\playInDodecahedron, {
 
 	sig = HoaEncodeMatrix.ar(sig, ~newEncoder);
 	sig = HoaDecodeMatrix.ar(sig, ~thirdOrderDecoder);
+	Out.ar(0, sig);
 }).add;
 )
 
@@ -219,6 +223,10 @@ SynthDef.new(\playInDodecahedron, {
 // ----------
 // Problem 8.
 // Create and play a Pbind that plays each of your eight buffers, one-by-one, and spatializes each one along the appropriate vector in 3D space, based on the spoken text. For example, "up front left" should appear to emanate 45 degrees left of front, and 45 degrees above the equatorial plane.
+
+// Renzo: this is the best I could do. My current issue is that
+// each signal isn't being spatialized correctly; every buffer
+// is played by the same loudspeakers at the same amplitudes.
 
 (
 ~directionBufs = [
@@ -236,7 +244,7 @@ Pbind(
 	\instrument, \playInDodecahedron,
 	\bufnum, Pseq(~directionBufs),
 
-	\theta, Pseq([
+	\azimuth, Pseq([
 		45,
 		-45,
 		135,
@@ -247,7 +255,7 @@ Pbind(
 		-135,
 	].degrad),
 
-	\phi, Pseq([
+	\elevation, Pseq([
 		45,
 		45,
 		45,
