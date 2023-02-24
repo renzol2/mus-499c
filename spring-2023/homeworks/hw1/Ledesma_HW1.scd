@@ -265,6 +265,8 @@ Pbind(
 		-45,
 		-45
 	].degrad),
+
+	\amp, 0.4,
 ).play;
 )
 
