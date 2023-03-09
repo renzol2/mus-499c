@@ -16,6 +16,10 @@ s.options.sampleRate = 44100;
 s.boot;
 )
 
+(
+s.reboot;
+)
+
 // ----------
 // Overview: For this assignment, you will make a spatial recording of a sound object using a first-order A-format tetrahedral ambisonic microphone, encode this information as an ambisonic signal, creatively manipulate the soundfield by processing the ambisonic signal, and decode it for the Studio Z dodecahedron. Consider this as a preliminary exercise that will lead you into more in-depth creative ambisonic work.
 
@@ -46,23 +50,16 @@ s.boot;
 // ----------
 // Step 3: In Studio Z, write some code that encodes the A-format recording as a first-order B-format HOA signal. This process may involve two steps: one to convert from A-format to B-format (see 'newAtoB') and another to convert from the FOA to HOA toolset (see the help file titled "Ambisonic Format Exchange" — you'll need to convert to the correct component ordering, normalization, and reference radius). There may be other approaches, but this approach seemed to worked well, and seemed to be consistent with the intended use of the FOA/HOA tools.
 
-// Old files
-(
-b = [
-	Buffer.read(s, "A-format-test-1_2023-02-15.aiff".resolveRelative),
-	Buffer.read(s, "A-format-test-2_2023-02-15.aiff".resolveRelative),
-];
-)
-
 // My files
 (
 b = [
-	Buffer.read(s, "A-format-test-1_2023-03-08.aiff".resolveRelative),
-	Buffer.read(s, "A-format-test-2_2023-03-08.aiff".resolveRelative),
+	Buffer.read(s, "A-format-test_2023-03-09.aiff".resolveRelative),
+	Buffer.read(s, "A-format-tambo_2023-03-09.aiff".resolveRelative),
+	Buffer.read(s, "A-format-bottle_2023-03-09.aiff".resolveRelative),
 ];
 )
 
-// A-format-testing_2023-02-25
+// Taken from A-format-testing_2023-02-25.scd, from the Canvas site
 (
 ~encoder = FoaEncoderMatrix.newAtoB('flu', 'uns');
 ~foaToHoa = HoaMatrixEncoder.newFormat(AtkFoa.format, AtkFoa.defaultOrder);
@@ -71,14 +68,6 @@ b = [
 	beamShape: \energy,
 	match: \energy,
 	order: 1
-);
-)
-
-// Ambisonic Format Exchange
-(
-~encoder = HoaMatrixEncoder.newFormat(
-	AtkFoa.format,
-	AtkFoa.defaultOrder
 );
 )
 
@@ -107,7 +96,8 @@ b = [
 (
 {
 	var sig;
-	sig = PlayBuf.ar(4, b[0], BufRateScale.ir(b[0]), doneAction:2);
+	var bufnum = 2;  // 0 for test, 1 for tambourine, 2 for bottle
+	sig = PlayBuf.ar(4, b[bufnum], BufRateScale.ir(b[bufnum]), doneAction:2);
 	sig = HPF.ar(sig, 60);
 	sig = FoaEncode.ar(sig, ~encoder);
 	sig = HoaNFCtrl.ar(
@@ -117,7 +107,7 @@ b = [
 		order: 1
 	);
 	sig = HoaDecodeMatrix.ar(sig, ~decoder);
-}.play
+}.play;
 )
 
 
@@ -129,9 +119,61 @@ b = [
 // Play signal
 (
 {
-	var sig;
-	sig = PlayBuf.ar(4, b[0], BufRateScale.ir(b[0]), doneAction:2);
+	var sig, tambourine, bottle, lfo1, lfo2, tamboDelay, bottleDelay;
+
+	// Get bottle and tambourine signals
+	tambourine = PlayBuf.ar(4, b[1], BufRateScale.kr(b[1]), doneAction:2);
+	bottle = PlayBuf.ar(4, b[2], BufRateScale.kr(b[2]), doneAction:2);
+
+	// Create modulated delay signals from both signals
+	bottleDelay = AllpassL.ar(
+		in: bottle,
+		maxdelaytime: 2,
+		delaytime: SinOsc.kr(1/10).range(0.2, 2),
+		decaytime: 3
+	);
+	tamboDelay = AllpassL.ar(
+		in: tambourine,
+		maxdelaytime: 3,
+		delaytime: SinOsc.kr(1/11).range(0.2, 3),
+		decaytime: 1
+	);
+
+	// Filter both signals separately, using LFOs to control cutoff freqs
+	lfo1 = SinOsc.kr(1/20);
+	lfo2 = LFTri.kr(1/21);
+
+	// Filter tambourine to create resonances
+	tambourine = 0.5 * Ringz.ar(
+		tambourine,
+		BrownNoise.kr(lfo1.range(0.1, 0.3)).range(
+			SinOsc.kr(1/100).range(200, 1500),
+			LFTri.kr(1/30).range(800, 2000)
+		),
+	);
+	tambourine = tambourine + 0.5 * Ringz.ar(
+		tambourine,
+		BrownNoise.kr(0.3).range(20, 400)
+	);
+
+	// Filter the tambourine delayed signal too
+	tamboDelay = 0.4*tamboDelay + 0.4*Ringz.ar(
+		tamboDelay, BrownNoise.kr(0.2).range(100, 400)
+	);
+
+	// Filter bottle.. not as much
+	bottle = LPF.ar(
+		bottle,
+		BrownNoise.kr(lfo2.range(0.01, 0.4)).range(400, 14000)
+	);
+
+	// Combine
+	sig = 0.5*tambourine + bottle + tamboDelay + bottleDelay;
 	sig = HPF.ar(sig, 60);
+	sig = sig.blend(GVerb.ar([sig[0], sig[1]], 100), 0.4);
+	sig = sig * 0.08;
+
+	// Encode
 	sig = FoaEncode.ar(sig, ~encoder);
 	sig = HoaNFCtrl.ar(
 		in: HoaEncodeMatrix.ar(sig, ~foaToHoa),
@@ -139,6 +181,21 @@ b = [
 		decRadius: AtkHoa.refRadius,
 		order: 1
 	);
+
+	// Transform with modulated Zoom transformer
+	sig = HoaZoom.ar(
+		in: sig,
+		angle: SinOsc.kr(SinOsc.kr(1/20).range(-0.2, 0.2)).range(-89, 89).degrad,
+		theta: SinOsc.kr(1/21, pi / 2).range(-45, 45).degrad,
+		phi: SinOsc.kr(1/10).range(-45, 90).degrad,
+		order: 1
+	);
+
+	// Tilt and tumble with the mouse, for fun!
+	// Best when the magnitude of the distortion angle of HoaZoom goes high
+	sig = HoaTilt.ar(sig, MouseX.kr(-90, 90).poll.degrad, order: 1);
+	sig = HoaTumble.ar(sig, MouseY.kr(-90, 90).poll.degrad, order: 1);
+
 	sig = HoaDecodeMatrix.ar(sig, ~decoder);
 }.play
 )
